@@ -69,21 +69,6 @@ var<storage,read_write> x_diff_1: array<f32>;
 @group(0) @binding(18)
 var<storage,read_write> x_diff_2: array<f32>;
 
-@group(0) @binding(19)
-var<storage,read_write> shifted_u: array<f32>;
-
-@group(0) @binding(20)
-var<storage,read_write> dim: i32;
-
-@group(0) @binding(21)
-var<storage,read_write> boundary_factor: i32;
-
-@group(0) @binding(22)
-var<storage,read_write> is_z: i32;
-
-@group(0) @binding(23)
-var<storage,read_write> derivative_result: array<f32>;
-
 // 2D index to 1D index
 fn zx(z: i32, x: i32) -> i32 {
     let index = x + z * infoI32.grid_size_x;
@@ -91,275 +76,114 @@ fn zx(z: i32, x: i32) -> i32 {
     return select(-1, index, x >= 0 && x < infoI32.grid_size_x && z >= 0 && z < infoI32.grid_size_z);
 }
 
-// 2D index to 1D index
-fn zx_2(z: i32, x: i32) -> i32 {
-    let index = x + z * infoI32.grid_size_x;
-
-    return select(-1, index, x >= 0 && x < infoI32.grid_size_x && z >= 0 && z < infoI32.grid_size_z + 1);
-}
-
 @compute
 @workgroup_size(wsz, wsx)
-fn update_z_diff_1(@builtin(global_invocation_id) index: vec3<u32>) {
+fn derivative_z1(@builtin(global_invocation_id) index: vec3<u32>) {
     let z: i32 = i32(index.x);
     let x: i32 = i32(index.y);
 
-    z_diff_1[zx(z, x)] = derivative_result[i32(zx_2(z, x) + 1)];
-}
+    let dim: i32 = 0; // dimension (0 for Z, 1 for X)
 
-@compute
-@workgroup_size(wsz, wsx)
-fn update_x_diff_1_pt1(@builtin(global_invocation_id) index: vec3<u32>) {
-    let z: i32 = i32(index.x);
-    let x: i32 = i32(index.y);
+    // Coefficients for finite difference method
+    var coeff_diff = array<f32, 4>(1.19629, -0.07975, 0.00957, -0.00070);
 
-    x_diff_1[zx(z, x)] = derivative_result[i32(zx_2(z, x) + 1)];
-}
+    var derivative_result: f32 = 0.0;
 
-@compute
-@workgroup_size(wsz, wsx)
-fn update_x_diff_1_pt2(@builtin(global_invocation_id) index: vec3<u32>) {
-    let z: i32 = i32(index.x);
-    let x: i32 = i32(index.y);
-
-    x_diff_1[zx(z, x)] = x_diff_1[zx(x, z)];
-}
-
-@compute
-@workgroup_size(wsz, wsx)
-fn update_z_diff_2(@builtin(global_invocation_id) index: vec3<u32>) {
-    let z: i32 = i32(index.x);
-    let x: i32 = i32(index.y);
-
-    z_diff_2[zx(z, x)] = derivative_result[zx_2(z, x)];
-}
-
-@compute
-@workgroup_size(wsz, wsx)
-fn update_x_diff_2_pt1(@builtin(global_invocation_id) index: vec3<u32>) {
-    let z: i32 = i32(index.x);
-    let x: i32 = i32(index.y);
-
-    x_diff_2[zx(z, x)] = derivative_result[zx_2(z, x)];
-}
-
-@compute
-@workgroup_size(wsz, wsx)
-fn update_x_diff_2_pt2(@builtin(global_invocation_id) index: vec3<u32>) {
-    let z: i32 = i32(index.x);
-    let x: i32 = i32(index.y);
-
-    x_diff_2[zx(z, x)] = x_diff_2[zx(x, z)];
-}
-
-@compute
-@workgroup_size(ws_derivative, wsx)
-fn reset_derivative_result(@builtin(global_invocation_id) index: vec3<u32>) {
-    let z: i32 = i32(index.x);
-    let x: i32 = i32(index.y);
-
-    derivative_result[zx_2(z, x)] = f32(0);
-}
-
-@compute
-@workgroup_size(1)
-fn update_for_dz1() {
-    dim = 0;
-    boundary_factor = 1;
-    is_z = 1;
-}
-
-@compute
-@workgroup_size(1)
-fn update_for_dx1() {
-    dim = 1;
-    boundary_factor = 1;
-    is_z = 0;
-}
-
-@compute
-@workgroup_size(1)
-fn update_for_dz2() {
-    dim = 0;
-    boundary_factor = 0;
-    is_z = 1;
-}
-
-@compute
-@workgroup_size(1)
-fn update_for_dx2() {
-    dim = 1;
-    boundary_factor = 0;
-    is_z = 0;
-}
-
-@compute
-@workgroup_size(wsz, wsx)
-fn set_shifted_u(@builtin(global_invocation_id) index: vec3<u32>) {
-    let z: i32 = i32(index.x);
-    let x: i32 = i32(index.y);
-
-    if (boundary_factor == 1) {
-        if (dim == 0) {
-            shifted_u[zx(z, x)] = p_present[zx(z, x)];
-        }
-        else {
-            shifted_u[zx(z, x)] = p_present[zx(x, z)];
+    // Derivative in Z direction
+    for (var i: i32 = 0; i < 4; i = i + 1) {
+        let forward_idx = zx(z + i, x);
+        let backward_idx = zx(z - i, x);
+        if (forward_idx != -1 && backward_idx != -1) {
+            derivative_result += coeff_diff[i] * p_present[forward_idx];
+            derivative_result -= coeff_diff[i] * p_present[backward_idx];
         }
     }
-    else {
-        if (is_z == 1) {
-            if (dim == 0) {
-                shifted_u[zx(z, x)] = z_diff_1[zx(z, x)];
-            }
-            else {
-                shifted_u[zx(z, x)] = z_diff_1[zx(x, z)];
-            }
+
+    z_diff_1[zx(z, x)] = derivative_result;
+}
+
+@compute
+@workgroup_size(wsz, wsx)
+fn derivative_x1(@builtin(global_invocation_id) index: vec3<u32>) {
+    let z: i32 = i32(index.x);
+    let x: i32 = i32(index.y);
+
+    // Coefficients for finite difference method
+    var coeff_diff = array<f32, 4>(1.19629, -0.07975, 0.00957, -0.00070);
+
+    var derivative_result: f32 = 0.0;
+
+    // Derivative in X direction
+    for (var i: i32 = 0; i < 4; i = i + 1) {
+        let forward_idx = zx(z, x + i);
+        let backward_idx = zx(z, x - i);
+        if (forward_idx != -1 && backward_idx != -1) {
+            derivative_result += coeff_diff[i] * p_present[forward_idx];
+            derivative_result -= coeff_diff[i] * p_present[backward_idx];
         }
-        else {
-            if (dim == 0) {
-                shifted_u[zx(z, x)] = x_diff_1[zx(z, x)];
-            }
-            else {
-                shifted_u[zx(z, x)] = x_diff_1[zx(x, z)];
-            }
+    }
+
+    // boundary_factor == 1
+    x_diff_1[zx(z, x)] = derivative_result;
+}
+
+@compute
+@workgroup_size(wsz, wsx)
+fn derivative_z2(@builtin(global_invocation_id) index: vec3<u32>) {
+    let z: i32 = i32(index.x);
+    let x: i32 = i32(index.y);
+
+    let dim: i32 = 0; // dimension (0 for Z, 1 for X)
+
+    // Coefficients for finite difference method
+    var coeff_diff = array<f32, 4>(1.19629, -0.07975, 0.00957, -0.00070);
+
+    var derivative_result: f32 = 0.0;
+
+    // Derivative in Z direction
+    for (var i: i32 = 0; i < 4; i = i + 1) {
+        let forward_idx = zx(z + i, x);
+        let backward_idx = zx(z - i, x);
+        if (forward_idx != -1 && backward_idx != -1) {
+            derivative_result += coeff_diff[i] * z_diff_1[forward_idx];
+            derivative_result -= coeff_diff[i] * z_diff_1[backward_idx];
         }
+    }
+
+    // boundary_factor == 0
+    if (z > 0 && z < infoI32.grid_size_z &&
+        x > 0 && x < infoI32.grid_size_x) {
+        z_diff_2[zx(z, x)] = derivative_result;
     }
 }
 
 @compute
 @workgroup_size(wsz, wsx)
-fn derivative_z_1(@builtin(global_invocation_id) index: vec3<u32>) {
+fn derivative_x2(@builtin(global_invocation_id) index: vec3<u32>) {
     let z: i32 = i32(index.x);
     let x: i32 = i32(index.y);
 
-    var coeff_diff: array<f32, 4> = array<f32, 4>(1.19629, -0.07975, 0.00957, -0.00070);
+    let dim: i32 = 1; // dimension (0 for Z, 1 for X)
 
-    for (var i: i32 = 0; i < 4; i += 1) {
-        if (i == 0) {
-            derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-            derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-        }
-        else if (i == 1) {
-            if (z <= infoI32.grid_size_z - 2) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
-        else if (i == 2) {
-            if (z <= infoI32.grid_size_z - 3) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
-        else if (i == 3) {
-            if (z <= infoI32.grid_size_z - 4) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
+    // Coefficients for finite difference method
+    var coeff_diff = array<f32, 4>(1.19629, -0.07975, 0.00957, -0.00070);
+
+    var derivative_result: f32 = 0.0;
+
+    // Derivative in X direction
+    for (var i: i32 = 0; i < 4; i = i + 1) {
+        let forward_idx = zx(z, x + i);
+        let backward_idx = zx(z, x - i);
+        if (forward_idx != -1 && backward_idx != -1) {
+            derivative_result += coeff_diff[i] * x_diff_1[forward_idx];
+            derivative_result -= coeff_diff[i] * x_diff_1[backward_idx];
         }
     }
-}
 
-@compute
-@workgroup_size(wsz, wsx)
-fn derivative_x_1(@builtin(global_invocation_id) index: vec3<u32>) {
-    let z: i32 = i32(index.x);
-    let x: i32 = i32(index.y);
-
-    var coeff_diff: array<f32, 4> = array<f32, 4>(1.19629, -0.07975, 0.00957, -0.00070);
-
-    for (var i: i32 = 0; i < 4; i += 1) {
-        if (i == 0) {
-            derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-            derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-        }
-        else if (i == 1) {
-            if (z <= infoI32.grid_size_z - 2) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
-        else if (i == 2) {
-            if (z <= infoI32.grid_size_z - 3) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
-        else if (i == 3) {
-            if (z <= infoI32.grid_size_z - 4) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
-    }
-}
-
-@compute
-@workgroup_size(wsz, wsx)
-fn derivative_z_2(@builtin(global_invocation_id) index: vec3<u32>) {
-    let z: i32 = i32(index.x);
-    let x: i32 = i32(index.y);
-
-    var coeff_diff: array<f32, 4> = array<f32, 4>(1.19629, -0.07975, 0.00957, -0.00070);
-
-    for (var i: i32 = 0; i < 4; i += 1) {
-        if (i == 0) {
-            derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-            derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-        }
-        else if (i == 1) {
-            if (z <= infoI32.grid_size_z - 2) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
-        else if (i == 2) {
-            if (z <= infoI32.grid_size_z - 3) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
-        else if (i == 3) {
-            if (z <= infoI32.grid_size_z - 4) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
-    }
-}
-
-@compute
-@workgroup_size(wsz, wsx)
-fn derivative_x_2(@builtin(global_invocation_id) index: vec3<u32>) {
-    let z: i32 = i32(index.x);
-    let x: i32 = i32(index.y);
-
-    var coeff_diff: array<f32, 4> = array<f32, 4>(1.19629, -0.07975, 0.00957, -0.00070);
-
-    for (var i: i32 = 0; i < 4; i += 1) {
-        if (i == 0) {
-            derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-            derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-        }
-        else if (i == 1) {
-            if (z <= infoI32.grid_size_z - 2) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
-        else if (i == 2) {
-            if (z <= infoI32.grid_size_z - 3) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
-        else if (i == 3) {
-            if (z <= infoI32.grid_size_z - 4) {
-                derivative_result[zx_2(z, x)] += coeff_diff[i] * shifted_u[zx(z + i, x)];
-                derivative_result[zx_2(z + i + 1, x)] -= coeff_diff[i] * shifted_u[zx(z, x)];
-            }
-        }
+    // boundary_factor == 0
+    if (z > 0 && z < infoI32.grid_size_z &&
+        x > 0 && x < infoI32.grid_size_x) {
+        x_diff_2[zx(z, x)] = derivative_result;
     }
 }
 
@@ -369,7 +193,7 @@ fn sim(@builtin(global_invocation_id) index: vec3<u32>) {
     let z: i32 = i32(index.x);
     let x: i32 = i32(index.y);
 
-    p_future[zx(z, x)] = cfl[zx(z, x)] * f32(f32(z_diff_2[zx(z, x)]) + f32(x_diff_2[zx(z, x)]));
+    p_future[zx(z, x)] = cfl[zx(z, x)] * f32(z_diff_2[zx(z, x)] + x_diff_2[zx(z, x)]);
 
     p_future[zx(z, x)] += ((2. * p_present[zx(z, x)]) - p_past[zx(z, x)]);
 

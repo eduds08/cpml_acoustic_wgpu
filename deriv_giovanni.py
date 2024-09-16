@@ -5,7 +5,7 @@ else:
     import wgpu.backends.rs  # Select backend 0.9.5
 
 import numpy as np
-from sklearn.metrics import mean_squared_error
+# from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 from time import time
 # from datetime import datetime
@@ -405,7 +405,7 @@ def sim_webgpu():
 
     # Cria o shader para calculo contido no arquivo ``shader_2D_elast_cpml.wgsl''
     cshader = None
-    with open('shader_2D_acoustic_cpml.wgsl') as shader_file:
+    with open('derivative_giovanni.wgsl') as shader_file:
         cshader_string = shader_file.read().replace('wsx', f'{wsx}').replace('wsy', f'{wsy}')
         cshader = device.create_shader_module(code=cshader_string)
 

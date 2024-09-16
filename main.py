@@ -63,7 +63,7 @@ dx = np.float32(5e-4)  # Grid Steps - x (m/px)
 size = np.int32(600)  # Grid Size (z, x) (px)
 grid_size_z = np.int32(size)
 grid_size_x = np.int32(size)
-total_time = np.int32(3000)  # Total amount of time steps
+total_time = np.int32(6000)  # Total amount of time steps
 
 ws_derivative = None
 for i in range(15, 0, -1):
@@ -125,7 +125,6 @@ z_diff_1 = np.zeros(grid_size_shape, dtype=np.float32)
 z_diff_2 = np.zeros(grid_size_shape, dtype=np.float32)
 x_diff_1 = np.zeros(grid_size_shape, dtype=np.float32)
 x_diff_2 = np.zeros(grid_size_shape, dtype=np.float32)
-shifted_u = np.zeros(grid_size_shape, dtype=np.float32)
 
 """CPML começa aqui"""
 
@@ -185,8 +184,6 @@ if gpu_mode:
 
     wgpu_handler.shader_module = wgpu_handler.device.create_shader_module(code=shader_string)
 
-    derivative_result = np.zeros((grid_size_z + 1, grid_size_x), dtype=np.float32)
-
     wgsl_data = {
         'infoI32': info_int,
         'infoF32': info_float,
@@ -207,37 +204,15 @@ if gpu_mode:
         'z_diff_2': z_diff_2,
         'x_diff_1': x_diff_1,
         'x_diff_2': x_diff_2,
-        'shifted_u': shifted_u,
-        'dim': np.int32(0),
-        'boundary_factor': np.int32(1),
-        'is_z': np.int32(1),
-        'derivative_result': derivative_result,
     }
 
     shader_lines = list(shader_string.split('\n'))
     buffers = wgpu_handler.create_buffers(wgsl_data, shader_lines)
 
-    compute_update_z1 = wgpu_handler.create_compute_pipeline("update_z_diff_1")
-    compute_update_x1_pt1 = wgpu_handler.create_compute_pipeline("update_x_diff_1_pt1")
-    compute_update_x1_pt2 = wgpu_handler.create_compute_pipeline("update_x_diff_1_pt2")
-    compute_update_z2 = wgpu_handler.create_compute_pipeline("update_z_diff_2")
-    compute_update_x2_pt1 = wgpu_handler.create_compute_pipeline("update_x_diff_2_pt1")
-    compute_update_x2_pt2 = wgpu_handler.create_compute_pipeline("update_x_diff_2_pt2")
-
-    compute_reset_derivative_result = wgpu_handler.create_compute_pipeline("reset_derivative_result")
-
-    compute_update_for_dz1 = wgpu_handler.create_compute_pipeline("update_for_dz1")
-    compute_update_for_dx1 = wgpu_handler.create_compute_pipeline("update_for_dx1")
-    compute_update_for_dz2 = wgpu_handler.create_compute_pipeline("update_for_dz2")
-    compute_update_for_dx2 = wgpu_handler.create_compute_pipeline("update_for_dx2")
-
-    compute_set_shifted_u = wgpu_handler.create_compute_pipeline("set_shifted_u")
-
-    compute_diff_z_1 = wgpu_handler.create_compute_pipeline("derivative_z_1")
-    compute_diff_x_1 = wgpu_handler.create_compute_pipeline("derivative_x_1")
-    compute_diff_z_2 = wgpu_handler.create_compute_pipeline("derivative_z_2")
-    compute_diff_x_2 = wgpu_handler.create_compute_pipeline("derivative_x_2")
-
+    compute_derivative_z1 = wgpu_handler.create_compute_pipeline("derivative_z1")
+    compute_derivative_x1 = wgpu_handler.create_compute_pipeline("derivative_x1")
+    compute_derivative_z2 = wgpu_handler.create_compute_pipeline("derivative_z2")
+    compute_derivative_x2 = wgpu_handler.create_compute_pipeline("derivative_x2")
     compute_sim = wgpu_handler.create_compute_pipeline("sim")
     compute_incr = wgpu_handler.create_compute_pipeline("incr_time")
 
@@ -250,87 +225,19 @@ for i in range(total_time):
         for index, bind_group in enumerate(wgpu_handler.bind_groups):
             compute_pass.set_bind_group(index, bind_group, [], 0, 999999)
 
-        compute_pass.set_pipeline(compute_reset_derivative_result)
-        compute_pass.dispatch_workgroups((size + 1) // ws_derivative,
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_update_for_dz1)
-        compute_pass.dispatch_workgroups(1)
-
-        compute_pass.set_pipeline(compute_set_shifted_u)
+        compute_pass.set_pipeline(compute_derivative_z1)
         compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
                                          grid_size_x // wgpu_handler.ws[1])
 
-        compute_pass.set_pipeline(compute_diff_z_1)
+        compute_pass.set_pipeline(compute_derivative_x1)
         compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
                                          grid_size_x // wgpu_handler.ws[1])
 
-        compute_pass.set_pipeline(compute_update_z1)
+        compute_pass.set_pipeline(compute_derivative_z2)
         compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
                                          grid_size_x // wgpu_handler.ws[1])
 
-        compute_pass.set_pipeline(compute_reset_derivative_result)
-        compute_pass.dispatch_workgroups((size + 1) // ws_derivative,
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_update_for_dx1)
-        compute_pass.dispatch_workgroups(1)
-
-        compute_pass.set_pipeline(compute_set_shifted_u)
-        compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_diff_x_1)
-        compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_update_x1_pt1)
-        compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_update_x1_pt2)
-        compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_reset_derivative_result)
-        compute_pass.dispatch_workgroups((size + 1) // ws_derivative,
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_update_for_dz2)
-        compute_pass.dispatch_workgroups(1)
-
-        compute_pass.set_pipeline(compute_set_shifted_u)
-        compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_diff_z_2)
-        compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_update_z2)
-        compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_reset_derivative_result)
-        compute_pass.dispatch_workgroups((size + 1) // ws_derivative,
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_update_for_dx2)
-        compute_pass.dispatch_workgroups(1)
-
-        compute_pass.set_pipeline(compute_set_shifted_u)
-        compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_diff_x_2)
-        compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_update_x2_pt1)
-        compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
-                                         grid_size_x // wgpu_handler.ws[1])
-
-        compute_pass.set_pipeline(compute_update_x2_pt2)
+        compute_pass.set_pipeline(compute_derivative_x2)
         compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
                                          grid_size_x // wgpu_handler.ws[1])
 
