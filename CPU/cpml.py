@@ -6,43 +6,10 @@ import pyqtgraph as pg
 from pyqtgraph.widgets.RawImageWidget import RawImageGLWidget
 
 
-def derivative_iter(dim, u, boundary_factor):
-    coeff_diff = [1.19629, -0.07975, 0.00957, -0.00070]
-
-    # Swap das dimensões dependendo de dim
-    if dim == 0:
-        shifted_u = u
-    else:
-        shifted_u = [[u[j][i] for j in range(grid_size_z)] for i in range(grid_size_x)]  # Transpor para usar a outra dimensão
-
-    # Criação do array para armazenar o resultado
-    derivative_result = [[0.0 for _ in range(len(shifted_u[0]))] for _ in range(len(shifted_u) + 1)]
-
-    # Cálculo da derivada usando o FDM
-    for i, coeff in enumerate(coeff_diff):
-        for z in range(len(shifted_u) - i):
-            for x in range(len(shifted_u[0])):
-                derivative_result[z][x] += coeff * shifted_u[z + i][x]
-                derivative_result[z + i + 1][x] -= coeff * shifted_u[z][x]
-
-    # Aplicação do boundary_factor
-    derivative_result = derivative_result[boundary_factor:len(derivative_result) + boundary_factor - 1]
-
-    # Se dim == 1, faz o swap de volta
-    if dim == 1:
-        derivative_result = [[derivative_result[j][i] for j in range(len(derivative_result))] for i in range(len(derivative_result[0]))]
-
-    return derivative_result
-
-
-# Calcula a derivada utilizando o Finite Difference Method (FDM)
 def derivative(dim, u, boundary_factor):
-    # accuracy = 8
-    # offsets = (np.concatenate((np.arange(-accuracy // 2, 0), np.arange(accuracy // 2))) + 0.5).astype(np.float32)
-    # coeff_diff = findiff.coefficients(deriv=1, offsets=list(offsets))["coefficients"][round(accuracy / 2):].astype(
-    #     np.float32)
-
-    coeff_diff = np.asarray([1.19629, -0.07975, 0.00957, -0.00070], dtype=np.float32)
+    accuracy = 8
+    offsets = (np.concatenate((np.arange(-accuracy // 2, 0), np.arange(accuracy // 2))) + 0.5).astype(np.float32)
+    coeff_diff = findiff.coefficients(deriv=1, offsets=list(offsets))["coefficients"][round(accuracy / 2):].astype(np.float32)
 
     shifted_u = u.swapaxes(0, dim)
     derivative_result = np.zeros((shifted_u.shape[0] + 1, shifted_u.shape[1]), dtype=np.float32)
@@ -72,10 +39,9 @@ source_z = np.int32(grid_size_z / 2)  # Source position - z
 source_x = np.int32(grid_size_x / 2)  # Source position - x
 
 # CFL
-cfl_z = c * (dt / dz)
-cfl_x = c * (dt / dx)
-print(f'CFL-Z: {cfl_z}')
-print(f'CFL-X: {cfl_x}')
+c = np.full(grid_size_shape, c, dtype=np.float32)
+c_squared = (c ** 2).astype(np.float32)
+cfl = (c_squared * (dt ** 2 / dz ** 2)).astype(np.float32)
 
 # Source
 time_arr = np.arange(total_time, dtype=np.float32) * dt
@@ -133,57 +99,27 @@ raw_image_widget.show()
 colormap = plt.get_cmap("bwr")
 norm = matplotlib.colors.Normalize(vmin=-vminmax, vmax=vminmax)
 
-slow_derivative = False
-
 # Loop principal
 for i in range(total_time):
-    if slow_derivative:
-        z_diff_1 = derivative_iter(dim=0, u=p_present, boundary_factor=1)
-        x_diff_1 = derivative_iter(dim=1, u=p_present, boundary_factor=1)
+    z_diff_1 = derivative(dim=0, u=p_present, boundary_factor=1)
+    x_diff_1 = derivative(dim=1, u=p_present, boundary_factor=1)
 
-        z_diff_1_arr = np.array(z_diff_1).reshape(grid_size_shape)
-        x_diff_1_arr = np.array(x_diff_1).reshape(grid_size_shape)
+    phi_z = absorption_z * phi_z + (absorption_z - 1) * z_diff_1[is_z_absorption]
+    phi_x = absorption_x * phi_x + (absorption_x - 1) * x_diff_1[is_x_absorption]
 
-        phi_z = absorption_z * phi_z + (absorption_z - 1) * z_diff_1_arr[is_z_absorption]
-        phi_x = absorption_x * phi_x + (absorption_x - 1) * x_diff_1_arr[is_x_absorption]
+    z_diff_1[is_z_absorption] += phi_z
+    x_diff_1[is_x_absorption] += phi_x
 
-        z_diff_1_arr[is_z_absorption] += phi_z
-        x_diff_1_arr[is_x_absorption] += phi_x
+    z_diff_2 = derivative(dim=0, u=z_diff_1, boundary_factor=0)
+    x_diff_2 = derivative(dim=1, u=x_diff_1, boundary_factor=0)
 
-        z_diff_2 = derivative_iter(dim=0, u=z_diff_1_arr, boundary_factor=0)
-        x_diff_2 = derivative_iter(dim=1, u=x_diff_1_arr, boundary_factor=0)
+    psi_z = absorption_z * psi_z + (absorption_z - 1) * z_diff_2[is_z_absorption]
+    psi_x = absorption_x * psi_x + (absorption_x - 1) * x_diff_2[is_x_absorption]
 
-        z_diff_2_arr = np.array(z_diff_2).reshape(grid_size_shape)
-        x_diff_2_arr = np.array(x_diff_2).reshape(grid_size_shape)
+    z_diff_2[is_z_absorption] += psi_z
+    x_diff_2[is_x_absorption] += psi_x
 
-        psi_z = absorption_z * psi_z + (absorption_z - 1) * z_diff_2_arr[is_z_absorption]
-        psi_x = absorption_x * psi_x + (absorption_x - 1) * x_diff_2_arr[is_x_absorption]
-
-        z_diff_2_arr[is_z_absorption] += psi_z
-        x_diff_2_arr[is_x_absorption] += psi_x
-
-        p_future = (c ** 2) * (dt ** 2 / dz ** 2) * (z_diff_2_arr + x_diff_2_arr)
-
-    else:
-        z_diff_1 = derivative(dim=0, u=p_present, boundary_factor=1)
-        x_diff_1 = derivative(dim=1, u=p_present, boundary_factor=1)
-
-        phi_z = absorption_z * phi_z + (absorption_z - 1) * z_diff_1[is_z_absorption]
-        phi_x = absorption_x * phi_x + (absorption_x - 1) * x_diff_1[is_x_absorption]
-
-        z_diff_1[is_z_absorption] += phi_z
-        x_diff_1[is_x_absorption] += phi_x
-
-        z_diff_2 = derivative(dim=0, u=z_diff_1, boundary_factor=0)
-        x_diff_2 = derivative(dim=1, u=x_diff_1, boundary_factor=0)
-
-        psi_z = absorption_z * psi_z + (absorption_z - 1) * z_diff_2[is_z_absorption]
-        psi_x = absorption_x * psi_x + (absorption_x - 1) * x_diff_2[is_x_absorption]
-
-        z_diff_2[is_z_absorption] += psi_z
-        x_diff_2[is_x_absorption] += psi_x
-
-        p_future = (c ** 2) * (dt ** 2 / dz ** 2) * (z_diff_2 + x_diff_2)
+    p_future = cfl * (z_diff_2 + x_diff_2)
 
     p_future += 2 * p_present - p_past
 

@@ -377,8 +377,6 @@ fn space_sim1(@builtin(global_invocation_id) index: vec3<u32>) {
     set_mdp_x(x, y, get_b_x_h(x)*get_mdp_x(x, y) + get_a_x_h(x)*vdp_x);
     vdp_y = (get_p_1(x, y + 1) - get_p_1(x, y)) / sim_flt_par.dy;
     set_mdp_y(x, y, get_b_y_h(y)*get_mdp_y(x, y) + get_a_y_h(y)*vdp_y);
-    set_dp_x(x, y, (vdp_x / get_k_x_h(x) + get_mdp_x(x, y))/get_rho_h_x(x, y));
-    set_dp_y(x, y, (vdp_y / get_k_y_h(y) + get_mdp_y(x, y))/get_rho_h_y(x, y));
 }
 
 // function to calculate second derivatives
@@ -395,8 +393,6 @@ fn space_sim2(@builtin(global_invocation_id) index: vec3<u32>) {
     set_dmdp_x(x, y, get_b_x(x)*get_dmdp_x(x, y) + get_a_x(x)*vdp_xx);
     vdp_yy = (get_dp_y(x, y) - get_dp_y(x, y - 1)) / sim_flt_par.dy;
     set_dmdp_y(x, y, get_b_y(y)*get_dmdp_y(x, y) + get_a_y(y)*vdp_yy);
-    set_v_x(x, y, vdp_xx / get_k_x(x) + get_dmdp_x(x, y));
-    set_v_y(x, y, vdp_yy / get_k_y(y) + get_dmdp_y(x, y));
 }
 
 @compute
