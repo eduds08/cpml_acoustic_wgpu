@@ -4,6 +4,7 @@ struct InfoInt {
     source_z: i32,
     source_x: i32,
     i: i32,
+    phi_length: i32,
 };
 
 struct InfoFloat {
@@ -45,11 +46,42 @@ var<storage,read_write> x_diff_1: array<f32>;
 @group(0) @binding(10)
 var<storage,read_write> x_diff_2: array<f32>;
 
+@group(0) @binding(11)
+var<storage,read_write> phi_z: array<f32>;
+
+@group(0) @binding(12)
+var<storage,read_write> phi_x: array<f32>;
+
+@group(0) @binding(13)
+var<storage,read_write> absorption_z: array<f32>;
+
+@group(0) @binding(14)
+var<storage,read_write> absorption_x: array<f32>;
+
+@group(0) @binding(15)
+var<storage,read_write> psi_z: array<f32>;
+
+@group(0) @binding(16)
+var<storage,read_write> psi_x: array<f32>;
+
+@group(0) @binding(17)
+var<storage,read_write> is_z_absorption: array<i32>;
+
+@group(0) @binding(18)
+var<storage,read_write> is_x_absorption: array<i32>;
+
 // 2D index to 1D index
 fn zx(z: i32, x: i32) -> i32 {
     let index = x + z * infoI32.grid_size_x;
 
     return select(-1, index, x >= 0 && x < infoI32.grid_size_x && z >= 0 && z < infoI32.grid_size_z);
+}
+
+// 2D index to 1D index
+fn zx_phi(z: i32, x: i32) -> i32 {
+    let index = x + z * infoI32.grid_size_x;
+
+    return select(-1, index, index >= 0 && index < infoI32.phi_length);
 }
 
 @compute
@@ -74,7 +106,7 @@ fn first_derivatives(@builtin(global_invocation_id) index: vec3<u32>) {
 
 @compute
 @workgroup_size(wsz, wsx)
-fn second_derivatives_2(@builtin(global_invocation_id) index: vec3<u32>) {
+fn second_derivatives(@builtin(global_invocation_id) index: vec3<u32>) {
     let z: i32 = i32(index.x);
     let x: i32 = i32(index.y);
 
@@ -94,24 +126,80 @@ fn second_derivatives_2(@builtin(global_invocation_id) index: vec3<u32>) {
 
 @compute
 @workgroup_size(wsz, wsx)
-fn second_derivatives(@builtin(global_invocation_id) index: vec3<u32>) {
+fn after_d1(@builtin(global_invocation_id) index: vec3<u32>) {
     let z: i32 = i32(index.x);
     let x: i32 = i32(index.y);
 
-    var pzz: f32 = 0.;
-    var pxx: f32 = 0.;
+    var phi_idx_teste: i32 = 0;
 
-    if (z >= 2 && z <= infoI32.grid_size_z - 3)
-    {
-        pzz = ((-1./12.) * p_present[zx(z + 2, x)] + (4./3.) * p_present[zx(z + 1, x)] - (5./2.) * p_present[zx(z, x)] + (4./3.) * p_present[zx(z - 1, x)] - (1./12.) * p_present[zx(z - 2, x)]) / (infoF32.dz * infoF32.dz);
-    }
-    if (x >= 2 && x <= infoI32.grid_size_x - 3)
-    {
-        pxx = ((-1./12.) * p_present[zx(z, x + 2)] + (4./3.) * p_present[zx(z, x + 1)] - (5./2.) * p_present[zx(z, x)] + (4./3.) * p_present[zx(z, x - 1)] - (1./12.) * p_present[zx(z, x - 2)]) / (infoF32.dx * infoF32.dx);
-    }
+    phi_idx_teste = zx_phi(z, x);
 
-    z_diff_2[zx(z, x)] = pzz;
-    x_diff_2[zx(z, x)] = pxx;
+    if (phi_idx_teste != -1) {
+        phi_z[phi_idx_teste] = absorption_z[phi_idx_teste] * phi_z[phi_idx_teste];
+
+        if (is_z_absorption[zx(z, x)] == 1) {
+            phi_z[phi_idx_teste] += (absorption_z[phi_idx_teste] - 1.) * z_diff_1[zx(z, x)];
+        }
+        else {
+            phi_z[phi_idx_teste] += absorption_z[phi_idx_teste] - 1.;
+        }
+
+        phi_x[phi_idx_teste] = absorption_x[phi_idx_teste] * phi_x[phi_idx_teste];
+
+        if (is_x_absorption[zx(z, x)] == 1) {
+            phi_x[phi_idx_teste] += (absorption_x[phi_idx_teste] - 1.) * x_diff_1[zx(z, x)];
+        }
+        else {
+            phi_x[phi_idx_teste] += absorption_x[phi_idx_teste] - 1.;
+        }
+
+        if (is_z_absorption[zx(z, x)] == 1) {
+            z_diff_1[zx(z, x)] += phi_z[phi_idx_teste];
+        }
+
+        if (is_x_absorption[zx(z, x)] == 1) {
+            x_diff_1[zx(z, x)] += phi_x[phi_idx_teste];
+        }
+    }
+}
+
+@compute
+@workgroup_size(wsz, wsx)
+fn after_d2(@builtin(global_invocation_id) index: vec3<u32>) {
+    let z: i32 = i32(index.x);
+    let x: i32 = i32(index.y);
+
+    var phi_idx_teste: i32 = 0;
+
+    phi_idx_teste = zx_phi(z, x);
+
+    if (phi_idx_teste != -1) {
+        psi_z[phi_idx_teste] = absorption_z[phi_idx_teste] * psi_z[phi_idx_teste];
+
+        if (is_z_absorption[zx(z, x)] == 1) {
+            psi_z[phi_idx_teste] += (absorption_z[phi_idx_teste] - 1.) * z_diff_2[zx(z, x)];
+        }
+        else {
+            psi_z[phi_idx_teste] += absorption_z[phi_idx_teste] - 1.;
+        }
+
+        psi_x[phi_idx_teste] = absorption_x[phi_idx_teste] * psi_x[phi_idx_teste];
+
+        if (is_x_absorption[zx(z, x)] == 1) {
+            psi_x[phi_idx_teste] += (absorption_x[phi_idx_teste] - 1.) * x_diff_2[zx(z, x)];
+        }
+        else {
+            psi_x[phi_idx_teste] += absorption_x[phi_idx_teste] - 1.;
+        }
+
+        if (is_z_absorption[zx(z, x)] == 1) {
+            z_diff_2[zx(z, x)] += psi_z[phi_idx_teste];
+        }
+
+        if (is_x_absorption[zx(z, x)] == 1) {
+            x_diff_2[zx(z, x)] += psi_x[phi_idx_teste];
+        }
+    }
 }
 
 @compute

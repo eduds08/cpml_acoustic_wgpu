@@ -35,6 +35,45 @@ f0 = 1e6
 source = np.exp(-((time_arr - t0) * f0) ** 2) * np.cos(2 * np.pi * f0 * time_arr)
 source = (source / np.amax(np.abs(source))).astype(np.float32)
 
+p_future = np.zeros(grid_size_shape, dtype=np.float32)
+p_present = np.zeros(grid_size_shape, dtype=np.float32)
+p_past = np.zeros(grid_size_shape, dtype=np.float32)
+z_diff_1 = np.zeros(grid_size_shape, dtype=np.float32)
+z_diff_2 = np.zeros(grid_size_shape, dtype=np.float32)
+x_diff_1 = np.zeros(grid_size_shape, dtype=np.float32)
+x_diff_2 = np.zeros(grid_size_shape, dtype=np.float32)
+
+"""CPML começa aqui"""
+
+absorption_layer_size = 50
+damping_coefficient = 3e6
+
+x, z = np.meshgrid(np.arange(grid_size_x, dtype=np.float32), np.arange(grid_size_z, dtype=np.float32))
+
+# Aqui escolhemos as bordas que queremos absorver
+is_x_absorption = (x > grid_size_x - absorption_layer_size) | (x < absorption_layer_size)
+is_z_absorption = (z > grid_size_z - absorption_layer_size) | (z < absorption_layer_size)
+
+absorption_coefficient = np.exp(
+    -(damping_coefficient * (np.arange(absorption_layer_size) / absorption_layer_size) ** 2) * dt).astype(np.float32)
+
+psi_x = np.zeros(is_x_absorption.sum(), dtype=np.float32)
+psi_z = np.zeros(is_z_absorption.sum(), dtype=np.float32)
+phi_x = np.zeros(is_x_absorption.sum(), dtype=np.float32)
+phi_z = np.zeros(is_z_absorption.sum(), dtype=np.float32)
+
+absorption_x = np.ones((grid_size_z, grid_size_x), dtype=np.float32)
+absorption_z = np.ones((grid_size_z, grid_size_x), dtype=np.float32)
+
+# Aqui também escolhems as bordas que queremos absorver
+absorption_x[:, :absorption_layer_size] = absorption_coefficient[::-1]
+absorption_x[:, -absorption_layer_size:] = absorption_coefficient
+absorption_z[:absorption_layer_size, :] = absorption_coefficient[:, np.newaxis][::-1]
+absorption_z[-absorption_layer_size:, :] = absorption_coefficient[:, np.newaxis]
+
+absorption_x = absorption_x[is_x_absorption]
+absorption_z = absorption_z[is_z_absorption]
+
 info_int = np.array(
     [
         grid_size_z,
@@ -42,6 +81,7 @@ info_int = np.array(
         source_z,
         source_x,
         0,
+        np.int32(len(phi_z)),
     ],
     dtype=np.int32
 )
@@ -54,14 +94,6 @@ info_float = np.array(
     ],
     dtype=np.float32
 )
-
-p_future = np.zeros(grid_size_shape, dtype=np.float32)
-p_present = np.zeros(grid_size_shape, dtype=np.float32)
-p_past = np.zeros(grid_size_shape, dtype=np.float32)
-z_diff_1 = np.zeros(grid_size_shape, dtype=np.float32)
-z_diff_2 = np.zeros(grid_size_shape, dtype=np.float32)
-x_diff_1 = np.zeros(grid_size_shape, dtype=np.float32)
-x_diff_2 = np.zeros(grid_size_shape, dtype=np.float32)
 
 # GUI (animação)
 vminmax = 1e-4
@@ -77,7 +109,7 @@ raw_image_widget.show()
 colormap = plt.get_cmap("bwr")
 norm = matplotlib.colors.Normalize(vmin=-vminmax, vmax=vminmax)
 
-shader_file = open('no_cpml_gpu.wgsl')
+shader_file = open('cpml_gpu.wgsl')
 shader_string = (shader_file.read()
                  .replace('wsz', f'{wgpu_handler.ws[0]}')
                  .replace('wsx', f'{wgpu_handler.ws[1]}'))
@@ -86,6 +118,9 @@ shader_file.close()
 wgpu_handler.shader_module = wgpu_handler.device.create_shader_module(code=shader_string)
 
 lap = np.zeros(grid_size_shape, dtype=np.float32)
+
+is_z_absorption_int = is_z_absorption.astype(np.int32)
+is_x_absorption_int = is_x_absorption.astype(np.int32)
 
 wgsl_data = {
     'infoI32': info_int,
@@ -99,13 +134,23 @@ wgsl_data = {
     'z_diff_2': z_diff_2,
     'x_diff_1': x_diff_1,
     'x_diff_2': x_diff_2,
+    'phi_z': phi_z,
+    'phi_x': phi_x,
+    'absorption_z': absorption_z,
+    'absorption_x': absorption_x,
+    'psi_z': psi_z,
+    'psi_x': psi_x,
+    'is_z_absorption': is_z_absorption_int,
+    'is_x_absorption': is_x_absorption_int,
 }
 
 shader_lines = list(shader_string.split('\n'))
 buffers = wgpu_handler.create_buffers(wgsl_data, shader_lines)
 
 compute_d1 = wgpu_handler.create_compute_pipeline("first_derivatives")
+compute_after_d1 = wgpu_handler.create_compute_pipeline("after_d1")
 compute_d2 = wgpu_handler.create_compute_pipeline("second_derivatives")
+compute_after_d2 = wgpu_handler.create_compute_pipeline("after_d2")
 compute_sim = wgpu_handler.create_compute_pipeline("sim")
 compute_incr = wgpu_handler.create_compute_pipeline("incr_time")
 
@@ -121,7 +166,15 @@ for i in range(total_time):
     compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
                                      grid_size_x // wgpu_handler.ws[1])
 
+    compute_pass.set_pipeline(compute_after_d1)
+    compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
+                                     grid_size_x // wgpu_handler.ws[1])
+
     compute_pass.set_pipeline(compute_d2)
+    compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
+                                     grid_size_x // wgpu_handler.ws[1])
+
+    compute_pass.set_pipeline(compute_after_d2)
     compute_pass.dispatch_workgroups(grid_size_z // wgpu_handler.ws[0],
                                      grid_size_x // wgpu_handler.ws[1])
 

@@ -86,18 +86,18 @@ absorption_x = absorption_x[is_x_absorption]
 absorption_z = absorption_z[is_z_absorption]
 
 # GUI (animação)
-vminmax = 1e-4
-vscale = 1
-surface_format = pg.QtGui.QSurfaceFormat()
-surface_format.setSwapInterval(0)
-pg.QtGui.QSurfaceFormat.setDefaultFormat(surface_format)
-app = pg.QtWidgets.QApplication([])
-raw_image_widget = RawImageGLWidget()
-raw_image_widget.setWindowFlags(pg.QtCore.Qt.WindowType.FramelessWindowHint)
-raw_image_widget.resize(vscale * grid_size_x, vscale * grid_size_z)
-raw_image_widget.show()
-colormap = plt.get_cmap("bwr")
-norm = matplotlib.colors.Normalize(vmin=-vminmax, vmax=vminmax)
+# vminmax = 1e-4
+# vscale = 1
+# surface_format = pg.QtGui.QSurfaceFormat()
+# surface_format.setSwapInterval(0)
+# pg.QtGui.QSurfaceFormat.setDefaultFormat(surface_format)
+# app = pg.QtWidgets.QApplication([])
+# raw_image_widget = RawImageGLWidget()
+# raw_image_widget.setWindowFlags(pg.QtCore.Qt.WindowType.FramelessWindowHint)
+# raw_image_widget.resize(vscale * grid_size_x, vscale * grid_size_z)
+# raw_image_widget.show()
+# colormap = plt.get_cmap("bwr")
+# norm = matplotlib.colors.Normalize(vmin=-vminmax, vmax=vminmax)
 
 # Loop principal
 for i in range(total_time):
