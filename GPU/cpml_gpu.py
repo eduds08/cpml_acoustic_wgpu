@@ -71,11 +71,6 @@ absorption_x[:, -absorption_layer_size:] = absorption_coefficient
 absorption_z[:absorption_layer_size, :] = absorption_coefficient[:, np.newaxis][::-1]
 absorption_z[-absorption_layer_size:, :] = absorption_coefficient[:, np.newaxis]
 
-absorption_x[~is_x_absorption] = np.float32(-999)
-absorption_z[~is_z_absorption] = np.float32(-999)
-# absorption_x = absorption_x[is_x_absorption]
-# absorption_z = absorption_z[is_z_absorption]
-
 info_int = np.array(
     [
         grid_size_z,

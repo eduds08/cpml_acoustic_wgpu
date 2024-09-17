@@ -14,9 +14,9 @@ def derivative(dim, u, boundary_factor):
     shifted_u = u.swapaxes(0, dim)
     derivative_result = np.zeros((shifted_u.shape[0] + 1, shifted_u.shape[1]), dtype=np.float32)
 
-    for i, coeff in enumerate(coeff_diff):
-        derivative_result[:-i - 1, ...] += coeff * shifted_u[i:, ...]
-        derivative_result[i + 1:, ...] -= coeff * shifted_u[:shifted_u.shape[0] - i, ...]
+    for idx, coeff in enumerate(coeff_diff):
+        derivative_result[:-idx - 1, ...] += coeff * shifted_u[idx:, ...]
+        derivative_result[idx + 1:, ...] -= coeff * shifted_u[:shifted_u.shape[0] - idx, ...]
 
     return derivative_result[boundary_factor:derivative_result.shape[0] + boundary_factor - 1, ...].swapaxes(0, dim)
 
@@ -40,8 +40,6 @@ source_x = np.int32(grid_size_x / 2)  # Source position - x
 
 # CFL
 c = np.full(grid_size_shape, c, dtype=np.float32)
-c_squared = (c ** 2).astype(np.float32)
-cfl = (c_squared * (dt ** 2 / dz ** 2)).astype(np.float32)
 
 # Source
 time_arr = np.arange(total_time, dtype=np.float32) * dt
@@ -82,11 +80,6 @@ absorption_x[:, -absorption_layer_size:] = absorption_coefficient
 absorption_z[:absorption_layer_size, :] = absorption_coefficient[:, np.newaxis][::-1]
 absorption_z[-absorption_layer_size:, :] = absorption_coefficient[:, np.newaxis]
 
-absorption_x[~is_x_absorption] = np.float32(-999)
-absorption_z[~is_z_absorption] = np.float32(-999)
-# absorption_x = absorption_x[is_x_absorption]
-# absorption_z = absorption_z[is_z_absorption]
-
 # GUI (animação)
 vminmax = 1e-4
 vscale = 1
@@ -121,7 +114,10 @@ for i in range(total_time):
     z_diff_2[is_z_absorption] += psi_z[is_z_absorption]
     x_diff_2[is_x_absorption] += psi_x[is_x_absorption]
 
-    p_future = cfl * (z_diff_2 + x_diff_2)
+    z_diff_2 /= (dz ** 2)
+    x_diff_2 /= (dx ** 2)
+
+    p_future = (c ** 2) * (z_diff_2 + x_diff_2) * (dt ** 2)
 
     p_future += 2 * p_present - p_past
 

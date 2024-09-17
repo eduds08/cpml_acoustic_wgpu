@@ -14,9 +14,9 @@ def derivative(dim, u, boundary_factor):
     shifted_u = u.swapaxes(0, dim)
     derivative_result = np.zeros((shifted_u.shape[0] + 1, shifted_u.shape[1]), dtype=np.float32)
 
-    for i, coeff in enumerate(coeff_diff):
-        derivative_result[:-i - 1, ...] += coeff * shifted_u[i:, ...]
-        derivative_result[i + 1:, ...] -= coeff * shifted_u[:shifted_u.shape[0] - i, ...]
+    for idx, coeff in enumerate(coeff_diff):
+        derivative_result[:-idx - 1, ...] += coeff * shifted_u[idx:, ...]
+        derivative_result[idx + 1:, ...] -= coeff * shifted_u[:shifted_u.shape[0] - idx, ...]
 
     return derivative_result[boundary_factor:derivative_result.shape[0] + boundary_factor - 1, ...].swapaxes(0, dim)
 
@@ -86,18 +86,18 @@ absorption_x = absorption_x[is_x_absorption]
 absorption_z = absorption_z[is_z_absorption]
 
 # GUI (animação)
-# vminmax = 1e-4
-# vscale = 1
-# surface_format = pg.QtGui.QSurfaceFormat()
-# surface_format.setSwapInterval(0)
-# pg.QtGui.QSurfaceFormat.setDefaultFormat(surface_format)
-# app = pg.QtWidgets.QApplication([])
-# raw_image_widget = RawImageGLWidget()
-# raw_image_widget.setWindowFlags(pg.QtCore.Qt.WindowType.FramelessWindowHint)
-# raw_image_widget.resize(vscale * grid_size_x, vscale * grid_size_z)
-# raw_image_widget.show()
-# colormap = plt.get_cmap("bwr")
-# norm = matplotlib.colors.Normalize(vmin=-vminmax, vmax=vminmax)
+vminmax = 1e-4
+vscale = 1
+surface_format = pg.QtGui.QSurfaceFormat()
+surface_format.setSwapInterval(0)
+pg.QtGui.QSurfaceFormat.setDefaultFormat(surface_format)
+app = pg.QtWidgets.QApplication([])
+raw_image_widget = RawImageGLWidget()
+raw_image_widget.setWindowFlags(pg.QtCore.Qt.WindowType.FramelessWindowHint)
+raw_image_widget.resize(vscale * grid_size_x, vscale * grid_size_z)
+raw_image_widget.show()
+colormap = plt.get_cmap("bwr")
+norm = matplotlib.colors.Normalize(vmin=-vminmax, vmax=vminmax)
 
 # Loop principal
 for i in range(total_time):
