@@ -57,10 +57,10 @@ is_z_absorption = (z > grid_size_z - absorption_layer_size) | (z < absorption_la
 absorption_coefficient = np.exp(
     -(damping_coefficient * (np.arange(absorption_layer_size) / absorption_layer_size) ** 2) * dt).astype(np.float32)
 
-psi_x = np.zeros(is_x_absorption.sum(), dtype=np.float32)
-psi_z = np.zeros(is_z_absorption.sum(), dtype=np.float32)
-phi_x = np.zeros(is_x_absorption.sum(), dtype=np.float32)
-phi_z = np.zeros(is_z_absorption.sum(), dtype=np.float32)
+psi_x = np.zeros_like(is_x_absorption, dtype=np.float32)
+psi_z = np.zeros_like(is_z_absorption, dtype=np.float32)
+phi_x = np.zeros_like(is_x_absorption, dtype=np.float32)
+phi_z = np.zeros_like(is_z_absorption, dtype=np.float32)
 
 absorption_x = np.ones((grid_size_z, grid_size_x), dtype=np.float32)
 absorption_z = np.ones((grid_size_z, grid_size_x), dtype=np.float32)
@@ -71,8 +71,10 @@ absorption_x[:, -absorption_layer_size:] = absorption_coefficient
 absorption_z[:absorption_layer_size, :] = absorption_coefficient[:, np.newaxis][::-1]
 absorption_z[-absorption_layer_size:, :] = absorption_coefficient[:, np.newaxis]
 
-absorption_x = absorption_x[is_x_absorption]
-absorption_z = absorption_z[is_z_absorption]
+absorption_x[~is_x_absorption] = np.float32(-999)
+absorption_z[~is_z_absorption] = np.float32(-999)
+# absorption_x = absorption_x[is_x_absorption]
+# absorption_z = absorption_z[is_z_absorption]
 
 info_int = np.array(
     [
@@ -81,7 +83,6 @@ info_int = np.array(
         source_z,
         source_x,
         0,
-        np.int32(len(phi_z)),
     ],
     dtype=np.int32
 )
