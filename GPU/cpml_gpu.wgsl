@@ -78,18 +78,18 @@ fn zx(z: i32, x: i32) -> i32 {
 
 @compute
 @workgroup_size(wsz, wsx)
-fn first_derivatives(@builtin(global_invocation_id) index: vec3<u32>) {
+fn forward_partial(@builtin(global_invocation_id) index: vec3<u32>) {
     let z: i32 = i32(index.x);
     let x: i32 = i32(index.y);
 
     var pz: f32 = 0.;
     var px: f32 = 0.;
 
-    if (z >= 2 && z <= infoI32.grid_size_z - 3) {
-        pz = (-p_present[zx(z + 2, x)] + 8. * p_present[zx(z + 1, x)] - 8 * p_present[zx(z - 1, x)] + p_present[zx(z - 2, x)]) / (12. * infoF32.dz);
+    if (z + 1 < infoI32.grid_size_z) {
+        pz = (p_present[zx(z + 1, x)] - p_present[zx(z, x)]) / infoF32.dz;
     }
-    if (x >= 2 && x <= infoI32.grid_size_x - 3) {
-        px = (-p_present[zx(z, x + 2)] + 8. * p_present[zx(z, x + 1)] - 8. * p_present[zx(z, x - 1)] + p_present[zx(z, x - 2)]) / (12. * infoF32.dx);
+    if (x + 1 < infoI32.grid_size_x) {
+        px = (p_present[zx(z, x + 1)] - p_present[zx(z, x)]) / infoF32.dx;
     }
 
     z_diff_1[zx(z, x)] = pz;
@@ -98,18 +98,18 @@ fn first_derivatives(@builtin(global_invocation_id) index: vec3<u32>) {
 
 @compute
 @workgroup_size(wsz, wsx)
-fn second_derivatives(@builtin(global_invocation_id) index: vec3<u32>) {
+fn backward_partial(@builtin(global_invocation_id) index: vec3<u32>) {
     let z: i32 = i32(index.x);
     let x: i32 = i32(index.y);
 
     var pz: f32 = 0.;
     var px: f32 = 0.;
 
-    if (z >= 2 && z <= infoI32.grid_size_z - 3) {
-        pz = (-z_diff_1[zx(z + 2, x)] + 8. * z_diff_1[zx(z + 1, x)] - 8 * z_diff_1[zx(z - 1, x)] + z_diff_1[zx(z - 2, x)]) / (12. * infoF32.dz);
+    if (z - 1 >= 0) {
+        pz = (z_diff_1[zx(z, x)] - z_diff_1[zx(z - 1, x)]) / infoF32.dz;
     }
-    if (x >= 2 && x <= infoI32.grid_size_x - 3) {
-        px = (-x_diff_1[zx(z, x + 2)] + 8. * x_diff_1[zx(z, x + 1)] - 8. * x_diff_1[zx(z, x - 1)] + x_diff_1[zx(z, x - 2)]) / (12. * infoF32.dx);
+    if (x - 1 >= 0) {
+        px = (x_diff_1[zx(z, x)] - x_diff_1[zx(z, x - 1)]) / infoF32.dx;
     }
 
     z_diff_2[zx(z, x)] = pz;

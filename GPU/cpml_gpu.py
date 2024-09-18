@@ -143,9 +143,9 @@ wgsl_data = {
 shader_lines = list(shader_string.split('\n'))
 buffers = wgpu_handler.create_buffers(wgsl_data, shader_lines)
 
-compute_d1 = wgpu_handler.create_compute_pipeline("first_derivatives")
+compute_d1 = wgpu_handler.create_compute_pipeline("forward_partial")
 compute_after_d1 = wgpu_handler.create_compute_pipeline("after_d1")
-compute_d2 = wgpu_handler.create_compute_pipeline("second_derivatives")
+compute_d2 = wgpu_handler.create_compute_pipeline("backward_partial")
 compute_after_d2 = wgpu_handler.create_compute_pipeline("after_d2")
 compute_sim = wgpu_handler.create_compute_pipeline("sim")
 compute_incr = wgpu_handler.create_compute_pipeline("incr_time")
